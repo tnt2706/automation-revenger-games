@@ -1,0 +1,17 @@
+{
+    "game": {
+        "operatorTarget": "https://operator.revenge-games.com",
+        "serviceGameClientTarget": "https://api.revenge-games.com",
+        "urlTemplates": {
+            "rec": "https://rc.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
+            "rev": "https://rg.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}"
+        }
+    },
+    "db": {
+        "host": "localhost",
+        "port": 5433,
+        "user": "service_entity",
+        "password": "dev/operator_demo/20240325154059614700000001",
+        "database": "service_entity"
+    }
+}

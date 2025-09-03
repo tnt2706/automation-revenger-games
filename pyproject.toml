@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "automation-framework"
+version = "0.1.0"
+description = "Playwright + OpenCV automation framework"
+authors = ["Your Name <you@example.com>"]
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+playwright = "^1.40.0"
+opencv-python = "^4.8.0"
+numpy = "^1.26.0"
+pillow = "^10.1.0"
+python-dotenv = "^1.0.0"
+psycopg2-binary = "^2.9.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

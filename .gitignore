@@ -219,3 +219,6 @@ __marimo__/
 *.vscode/
 .DS_Store
 __pycache__/
+*logs
+*_output-reports
+*captures

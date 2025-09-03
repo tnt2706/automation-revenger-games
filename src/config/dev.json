@@ -5,7 +5,7 @@
         "urlTemplates": {
             "rec": "https://rc.dev.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
             "rev": "https://rg.dev.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
-            "pp": "https://sbox.pragmaticpplay.com/{gameCode}/?oc=ppdemo&t=gzu7mw8cke69dd1dpp8h9iu4&l=en&r=https%3A%2F%2Flobby.sandbox.revenge-games.com%2F%3Foc%3Dppdemo%26t%3Dgzu7mw8cke69dd1dpp8h9iu4%26theme%3Ddark%26l%3Den"
+            "pp": "https://sbox.pragmaticpplay.com/{gameCode}/?oc={oc}&t={token}&l={language}"
         }
     },
     "db": {

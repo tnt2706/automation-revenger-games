@@ -1,0 +1,127 @@
+{
+  "currencies": [
+    "AOA",
+    "ARS",
+    "AUD",
+    "BDT",
+    "BND",
+    "BOB",
+    "BRL",
+    "CDF",
+    "CFA",
+    "CLP",
+    "CNY",
+    "COP",
+    "DZD",
+    "EGP",
+    "ETB",
+    "EUR",
+    "GBP",
+    "GHS",
+    "GNF",
+    "HKD",
+    "HNL",
+    "IDR",
+    "IDRK",
+    "INR",
+    "JPY",
+    "KES",
+    "KRW",
+    "LAK",
+    "LTC",
+    "MAD",
+    "MBTC",
+    "MMK",
+    "MXN",
+    "MYR",
+    "NGN",
+    "NOK",
+    "NPR",
+    "NZD",
+    "PEN",
+    "PHP",
+    "PKR",
+    "PYG",
+    "RUB",
+    "SEK",
+    "THB",
+    "TND",
+    "TRY",
+    "TZS",
+    "UGX",
+    "USD",
+    "USDT",
+    "ZAR",
+    "ZMW",
+    "CAD",
+    "KHR",
+    "IRRK",
+    "IRR",
+    "GEL",
+    "CMYR",
+    "LAKK",
+    "UZS",
+    "UZSK",
+    "XOF",
+    "LKR",
+    "KZT",
+    "KGS",
+    "TJS",
+    "TMT"
+  ],
+  "languages": [
+    {
+      "code": "en",
+      "name": "English"
+    },
+    {
+      "code": "pt",
+      "name": "Português"
+    },
+    {
+      "code": "es",
+      "name": "Español"
+    },
+    {
+      "code": "fr",
+      "name": "Français"
+    },
+    {
+      "code": "de",
+      "name": "Deutsch"
+    },
+    {
+      "code": "it",
+      "name": "Italiano"
+    },
+    {
+      "code": "ru",
+      "name": "Русский"
+    },
+    {
+      "code": "zh",
+      "name": "中文"
+    },
+    {
+      "code": "ja",
+      "name": "日本語"
+    }
+  ],
+  "providers": [
+    {
+      "oc": "ppdemo",
+      "gameName": "Rebelião",
+      "codePrefix": "vs"
+    },
+    {
+      "oc": "rddemo",
+      "gameName": "Reclix",
+      "codePrefix": "rec"
+    },
+    {
+      "oc": "rvddemo",
+      "gameName": "Revenge",
+      "codePrefix": "rev"
+    }
+  ]
+}

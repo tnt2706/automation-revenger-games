@@ -4,7 +4,8 @@
         "serviceGameClientTarget": "https://api.sandbox.revenge-games.com",
         "urlTemplates": {
             "rec": "https://g.sandbox.rectangle-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
-            "rev": "https://g.sandbox.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}"
+            "rev": "https://g.sandbox.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
+            "pp": "https://sbox.pragmaticpplay.com/{gameCode}/?oc={oc}&t={token}&l={language}"
         }
     },
     "db": {

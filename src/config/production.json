@@ -4,7 +4,8 @@
         "serviceGameClientTarget": "https://api.revenge-games.com",
         "urlTemplates": {
             "rec": "https://rc.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
-            "rev": "https://rg.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}"
+            "rev": "https://rg.revenge-games.com/{gameCode}/?oc={oc}&t={token}&l={language}",
+            "pp": "https://sbox.pragmaticpplay.com/{gameCode}/?oc={oc}&t={token}&l={language}"
         }
     },
     "db": {

@@ -61,20 +61,37 @@ async def ask_confirmation(
 
 
 def ask_check_modes() -> List[str]:
-    """Ask user to pick one or more check modes (e.g., spin, setting, ...)."""
+    """Ask user to pick one or more check modes (e.g., spin, setting, add/sub bet, ...)."""
     selected = questionary.checkbox(
         "Which checks do you want to run?",
         choices=[
             {"name": "📋 All checks", "value": "all", "checked": True},
             {"name": "🎯 Spin check", "value": "spin"},
             {"name": "⚙️ Settings check", "value": "setting"},
+            {"name": "➕ Increase bet value", "value": "bet_add"},
+            {"name": "➖ Decrease bet value", "value": "bet_sub"},
         ],
     ).ask()
 
     if not selected:
-        return ["spin", "setting"]
+        return ["spin", "setting", "bet_add", "bet_sub"]
 
     if "all" in selected:
         return ["all"]
 
+    if ("bet_add" in selected or "bet_sub" in selected) and "spin" not in selected:
+        selected = ["spin"] + selected
+
     return selected
+
+
+def ask_delete_output() -> bool:
+    """Ask user whether to delete previous output data (Yes/No)."""
+    return (
+        questionary.select(
+            "Do you want to delete all previous output data before running?",
+            choices=["Yes", "No"],
+            default="Yes",
+        ).ask()
+        == "Yes"
+    )

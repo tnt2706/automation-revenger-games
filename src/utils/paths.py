@@ -18,6 +18,7 @@ def init_workspace():
             shutil.rmtree(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
+
 def get_output_path(token: str, game_code: str, language: Optional[str] = "en") -> Path:
     return OUTPUT_DIR / token / (language if language else "en") / game_code
 
@@ -32,3 +33,5 @@ def clear_captures():
 
 def clear_outputs():
     shutil.rmtree(OUTPUT_DIR)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+

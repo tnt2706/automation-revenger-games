@@ -7,14 +7,25 @@ from utils.logger import write_log
 async def capture_game_screenshot(
     page: Page, game: dict, save_dir: Path
 ) -> Path | None:
-    """
-    Capture a screenshot immediately after the page loads successfully.
-    `game` should include 'gameCode', 'gameUrl', 'language'
-    """
     try:
         write_log(f"🌐 Loading game page: {game['gameUrl']}")
-        await page.goto(game["gameUrl"], wait_until="networkidle", timeout=100_000)
-        await page.wait_for_load_state("networkidle", timeout=2_000)
+
+        response = await page.goto(
+            game["gameUrl"], wait_until="networkidle", timeout=100_000
+        )
+
+        if response is None or response.status not in (200, 301, 302):
+            write_log(
+                f"⚠️ Unexpected response status: {response.status if response else 'No Response'}"
+            )
+            return None
+
+        try:
+            await page.wait_for_selector(
+                "#game-canvas, .game-wrapper, body", timeout=15_000
+            )
+        except:
+            write_log("⚠️ Selector not found, proceeding anyway")
 
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -37,37 +48,57 @@ async def click_by_coord(
     response_timeout: int = 5000,
     settle_delay: float = 4.0,
 ) -> str:
-    """
-    Click at the given (x, y) coordinates repeatedly until network idle is detected.
-
-    Returns:
-      - "success" if the click succeeds and network becomes idle
-      - error string describing the failure if timeout or unexpected error occurs
-    """
     x, y = position
-    attempt = 0
 
-    while attempt < max_attempts:
-        attempt += 1
+    for attempt in range(1, max_attempts + 1):
         try:
             await page.mouse.click(x, y)
-
-            try:
-                await asyncio.wait_for(
-                    page.wait_for_load_state("networkidle", timeout=idle_timeout),
-                    timeout=response_timeout / 1000,
-                )
-
-                await asyncio.sleep(settle_delay)
-                return "success"
-
-            except asyncio.TimeoutError:
-                return (
-                    f"No network response within {response_timeout}ms "
-                    f"after click #{attempt} at ({x},{y})"
-                )
-
         except Exception as e:
-            return f"Unexpected error during click #{attempt} at ({x},{y}): {e}"
+            continue
 
-    return f"Max attempts reached ({max_attempts}) without network idle at ({x},{y})"
+        try:
+            # await asyncio.wait_for(
+            #     page.wait_for_load_state("networkidle", timeout=idle_timeout),
+            #     timeout=response_timeout / 1000,
+            # )
+            await asyncio.sleep(settle_delay)
+            return "success"
+        except asyncio.TimeoutError:
+            if attempt == max_attempts:
+                return f"No network response within {response_timeout}ms after {max_attempts} attempts at ({x},{y})"
+
+    return (
+        f"Max attempts reached ({max_attempts}) without successful click at ({x},{y})"
+    )
+
+
+async def click_multiple_times(
+    page: Page,
+    position: tuple[int, int],
+    times: int = 80,
+    delay: float = 0.2,
+) -> str:
+    x, y = position
+
+    for i in range(times):
+        try:
+            await page.mouse.click(x, y)
+            if delay > 0:
+                await asyncio.sleep(delay)
+        except Exception as e:
+            return f"Error during click #{i+1} at ({x},{y}): {e}"
+
+    return "success"
+
+
+async def capture_screenshot(page: Page, output_path: Path, mode: str) -> Path | None:
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=str(output_path), full_page=True)
+        write_log(f"📸 capture_{mode}: {output_path}")
+
+        return output_path
+
+    except Exception as e:
+        write_log(f"❌ Failed to capture screenshot: {e}")
+        return None

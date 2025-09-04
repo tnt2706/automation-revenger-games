@@ -2,11 +2,18 @@ from typing import List
 import re
 
 
-MODE_CHECK_MAP = {"btn_spin": "spin", "btn_setting": "setting"}
+MODE_CHECK_MAP = {
+    "btn_spin": "spin",
+    "btn_setting": "setting",
+    "btn_add": "add",
+    "btn_sub": "sub",
+}
 
 MODE_CHECK_REGEX = {
     r"^btn_spin.*": "spin",
     r"^btn_setting.*": "setting",
+    r"^btn_add.*": "add",
+    r"^btn_sub.*": "sub",
 }
 
 reverse_map = {v: k for k, v in MODE_CHECK_MAP.items()}
@@ -33,3 +40,7 @@ def reverse_mode_check(mapped_names: List[str]) -> List[str]:
         result.append(key)
 
     return result
+
+
+def is_mode_add_or_sub(mode: str) -> bool:
+    return mode in ("btn_sub", "btn_add")

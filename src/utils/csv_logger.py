@@ -10,10 +10,13 @@ def now_utc_iso() -> str:
 
 
 def write_csv_log(
-    csv_file_path: str,game: Dict[str, str], mode_check: str, status: str, message: str = ""
+    csv_file_path: str,
+    game: Dict[str, str],
+    mode_check: str,
+    status: str,
+    message: str = "",
 ):
     csv_file = csv_file_path.with_suffix(".csv")
-
 
     game_code = game["code"]
     game_name = game["name"]

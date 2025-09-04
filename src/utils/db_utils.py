@@ -6,10 +6,6 @@ from config.entities import get_table_name_entity
 
 
 def get_db_connection(db_config: Dict[str, Any]) -> psycopg2.extensions.connection:
-    """
-    Connect to PostgreSQL database and return connection object.
-    db_config must contain: host, port, database, user, password
-    """
     try:
         conn = psycopg2.connect(
             host=db_config.get("host"),
@@ -28,9 +24,6 @@ def get_db_connection(db_config: Dict[str, Any]) -> psycopg2.extensions.connecti
 def _fetch_all(
     query: str, params: Optional[List[Any]] = None, db_config: Dict[str, Any] = None
 ) -> List[Dict[str, Any]]:
-    """
-    Execute a SELECT query and return all rows as list of dicts.
-    """
     if db_config is None:
         raise ValueError("db_config is required")
     try:
@@ -46,9 +39,6 @@ def _fetch_all(
 def _fetch_one(
     query: str, params: Optional[List[Any]] = None, db_config: Dict[str, Any] = None
 ) -> Optional[Dict[str, Any]]:
-    """
-    Execute a SELECT query and return a single row as dict.
-    """
     if db_config is None:
         raise ValueError("db_config is required")
     try:
@@ -76,10 +66,6 @@ def get_game_info(db_config: Dict[str, Any]) -> List[Dict[str, Any]]:
 def get_all_game_by_code(
     game_code: str, db_config: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """
-    Get all active games whose code starts with `game_code`.
-    """
-
     game_table_name = get_table_name_entity("games")
     query = f"""
     SELECT name, code

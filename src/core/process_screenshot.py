@@ -1,10 +1,56 @@
 import cv2
 import json
+import time
 from pathlib import Path
+from typing import List, Dict
 from utils.logger import write_log
-from utils.paths import OUTPUT_DIR
+from utils.paths import OUTPUT_DIR, TEMPLATE_DIR, get_output_path
 from utils.opencv_utils import enhanced_template_matching, convert_numpy_types
 from utils.mapping_utils import map_mode_check_display
+
+
+def load_all_templates(oc: str, modes: List[str]) -> Dict[str, List[Dict]]:
+    """Load and pre-process all templates once at startup for maximum performance"""
+    templates_cache = {}
+
+    write_log("🔄 Loading and pre-processing all templates into memory...")
+    start_time = time.time()
+
+    for mode in modes:
+        try:
+            template_dir = TEMPLATE_DIR / oc / mode
+            template_files = list(template_dir.glob("*.png"))
+
+            loaded_templates = []
+            for template_path in template_files:
+                template_img = cv2.imread(str(template_path))
+                if template_img is not None:
+                    template_gray = cv2.cvtColor(template_img, cv2.COLOR_BGR2GRAY)
+                    loaded_templates.append(
+                        {
+                            "path": template_path,
+                            "gray": template_gray,
+                            "name": template_path.name,
+                            "original": template_img,
+                        }
+                    )
+
+            templates_cache[mode] = loaded_templates
+            write_log(
+                f"✅ Pre-processed {len(loaded_templates)} templates for mode: {mode}"
+            )
+
+        except Exception as e:
+            write_log(f"⚠️ Error loading templates for mode {mode}: {str(e)}")
+            templates_cache[mode] = []
+
+    elapsed = time.time() - start_time
+    total_templates = sum(len(templates) for templates in templates_cache.values())
+    write_log(
+        f"✅ All templates pre-processed! Total: {total_templates} templates in {elapsed:.2f}s"
+    )
+
+    return templates_cache
 
 
 def mark_final_matches(img, templates, template_threshold=0.6, debug=True):
@@ -60,31 +106,96 @@ def mark_final_matches(img, templates, template_threshold=0.6, debug=True):
     return result_img, final_matches
 
 
-def process_screenshot(
-    screen_path: Path, template_paths, template_threshold=0.6, debug=True
+def process_screenshot_batch(
+    game,
+    token,
+    language,
+    screen_paths,
+    template_paths,
+    template_threshold=0.6,
+    debug=False,
 ):
+    """
+    Process multiple screenshots with shared template loading for better performance
+    """
+    if not template_paths:
+        write_log("⚠️ No templates provided for batch processing")
+        return []
+
+    # Pre-load all templates once
+    loaded_templates = []
+    for template_path in template_paths:
+        template_img = cv2.imread(str(template_path))
+        if template_img is not None:
+            template_gray = cv2.cvtColor(template_img, cv2.COLOR_BGR2GRAY)
+            loaded_templates.append(
+                {
+                    "path": template_path,
+                    "gray": template_gray,
+                    "name": template_path.name,
+                }
+            )
+
+    results = []
+    for screen_path in screen_paths:
+        result = process_screenshot(
+            game,
+            token,
+            language,
+            screen_path,
+            loaded_templates,
+            template_threshold,
+            debug,
+        )
+        results.append(result)
+
+    return results
+
+
+def process_screenshot(
+    game,
+    token,
+    language,
+    screen_path,
+    loaded_templates,
+    template_threshold=0.6,
+    debug=True,
+):
+
     screen_img = cv2.imread(str(screen_path))
     if screen_img is None:
         msg = f"❌ Cannot read screenshot: {screen_path}"
         write_log(msg)
-        return None
+        return {
+            "screen_path": screen_path,
+            "final_matches": [],
+            "templates_matched": 0,
+        }
 
     screen_gray = cv2.cvtColor(screen_img, cv2.COLOR_BGR2GRAY)
     templates = []
+    best_confidence = 0.0
 
-    for template_path in template_paths:
-        template_img = cv2.imread(str(template_path))
-        if template_img is None:
-            continue
-        template_gray = cv2.cvtColor(template_img, cv2.COLOR_BGR2GRAY)
-        match_result = enhanced_template_matching(screen_gray, template_gray)
+    game_code = game.get("code")
+
+    for template_data in loaded_templates:
+        if best_confidence > 0.95:  # Early termination
+            break
+
+        match_result = enhanced_template_matching(screen_gray, template_data["gray"])
+
         if match_result and match_result["confidence"] >= template_threshold:
             x, y = match_result["location"]
             h, w = match_result["template_size"]
+
+            confidence = match_result["confidence"]
+            if confidence > best_confidence:
+                best_confidence = confidence
+
             templates.append(
                 {
-                    "template_name": template_path.name,
-                    "similarity": match_result["confidence"],
+                    "template_name": template_data["name"],
+                    "similarity": confidence,
                     "method": match_result["method"],
                     "scale": match_result["scale"],
                     "top_left": (x, y),
@@ -100,13 +211,19 @@ def process_screenshot(
         screen_img, templates, template_threshold, debug
     )
 
-    action_name = map_mode_check_display(template_path.stem)
-    output_path = OUTPUT_DIR / f"match_{screen_path.stem}_{action_name}.jpg"
-    cv2.imwrite(str(output_path), result_img)
+    output_path = get_output_path(token, game_code, language)
+    if templates:
+        action_name = templates[0]["template_name"].split(".")[0]
+        action_display = map_mode_check_display(action_name)
+        output_path = output_path / f"match_{action_display}.jpg"
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        success = cv2.imwrite(str(output_path), result_img)
+        if not success:
+            write_log(f"❌ Failed to write image to {output_path}")
 
     return {
         "screen_path": screen_path,
-        "output_path": output_path,
         "final_matches": final_matches,
         "templates_matched": len(templates),
     }

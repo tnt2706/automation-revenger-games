@@ -11,25 +11,9 @@ def get_token_by_operator_target(
     language: str = "en",
     balance: int = 100_000_000,
 ) -> str:
-    """
-    Request a new player token from operator API.
-
-    Args:
-        operator_target (str): Base URL of the operator, e.g., https://operator-demo.dev.revenge-games.com
-        currency (str): Currency code, e.g., 'USD'
-        balance (int): Initial balance (default: 100,000,000)
-        language (str): Language code (default: 'en')
-
-    Returns:
-        str: Player token ID
-
-    Raises:
-        requests.RequestException: If the request fails
-        ValueError: If token is not returned in response
-    """
     url = urljoin(
         operator_target,
-        f"/api/internal/players/_new?currency={currency}&balance={balance}&language={language}"
+        f"/api/internal/players/_new?currency={currency}&balance={balance}&language={language}",
     )
     timeout_sec = int(os.environ.get("timeout", "2"))
 
@@ -41,7 +25,9 @@ def get_token_by_operator_target(
         if not token:
             raise ValueError(f"No token returned from operator API: {data}")
 
-        write_log(f"✅ Player token obtained: {{'currency': {currency}, 'balance': {balance}, 'token': {token}}}")
+        write_log(
+            f"✅ Player token obtained: {{'currency': {currency}, 'balance': {balance}, 'token': {token}}}"
+        )
         return token
 
     except requests.RequestException as e:

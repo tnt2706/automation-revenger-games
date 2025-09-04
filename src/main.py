@@ -1,8 +1,12 @@
 import asyncio
 import time
-from typing import Any, Dict, List, Optional
-from core.process_screenshot import process_screenshot
-from utils.paths import TEMPLATE_DIR, CAPTURE_DIR, init_workspace, ensure_dirs
+from typing import Any, Dict
+from core.process_screenshot import load_all_templates, process_screenshot
+from utils.paths import (
+    CAPTURE_DIR,
+    init_workspace,
+    get_report_path
+)
 from config import Config
 from utils.logger import write_log, print_banner
 from utils.db_utils import get_db_connection
@@ -17,46 +21,33 @@ from cli.prompts import (
     ask_check_modes,
 )
 from utils.statistics import GameStatistics
-from rich.console import Console
 from utils.mapping_utils import reverse_mode_check, map_mode_check_display
 from utils.metadata_utils import get_all_providers, get_code_prefix
 from utils.db_utils import get_all_game_by_code
 from utils.http_utils import get_token_by_operator_target
+from rich.markup import escape
+from rich.console import Console
 
 
+
+# Configuration constants
 GAMES = ["vs5luckyphnly", "vs20fruitsw", "vs20sugarrush", "vs20olympx"]
-# GAMES =['vs20sugarrush', 'vs20olympx']
 TEMPLATE_THRESHOLD = 0.5
 TOKEN = "gzu7mw8cke69dd1dpp8h9iu4"
 LANGUAGE = "en"
 
-
-def load_all_templates(oc: str, modes: List[str]) -> Dict[str, List]:
-    """Load all templates once at startup for all modes"""
-    templates_cache = {}
-    
-    write_log("🔄 Loading all templates into memory...")
-    start_time = time.time()
-    
-    for mode in modes:
-        try:
-            template_dir = TEMPLATE_DIR / oc / mode
-            templates = list(template_dir.glob("*.png"))
-            templates_cache[mode] = templates
-            write_log(f"✅ Loaded {len(templates)} templates for mode: {mode}")
-        except Exception as e:
-            write_log(f"⚠️ Error loading templates for mode {mode}: {str(e)}")
-            templates_cache[mode] = []
-    
-    elapsed = time.time() - start_time
-    total_templates = sum(len(templates) for templates in templates_cache.values())
-    write_log(f"✅ All templates loaded! Total: {total_templates} templates in {elapsed:.2f}s")
-    
-    return templates_cache
+# Performance optimization: Pre-compile frequently used strings
+LOG_DIVIDER = "=" * 80
+PROGRESS_DIVIDER = "[dim]" + "=" * 60 + "[/dim]"
 
 
 def get_user_configurations(providers: Dict[str, Any]):
-    """Get all user configurations through CLI prompts"""
+    """Get all user configurations through CLI prompts with optimized logging"""
+
+    # Early validation to avoid unnecessary processing
+    if not providers:
+        write_log("⚠️ No providers available, exiting.")
+        return None, None, None, None
 
     # Ask user for environment
     env = ask_environment()
@@ -87,23 +78,29 @@ def get_user_configurations(providers: Dict[str, Any]):
 
     modes = reverse_mode_check(check_modes)
     write_log(f"🔍 Selected check modes: {', '.join(modes)}")
-
-    write_log("=" * 80)
+    write_log(LOG_DIVIDER)
 
     return env, oc, execution_mode, modes
 
 
-async def capture_game_for_mode(page, game, game_config, oc):
-    """Prepare game URL and capture screenshot for a specific mode."""
-    try:
-        game_code = game["code"]
-        game_name = game["name"]
+async def capture_game_for_mode(token, language, page, game, url_templates, oc):
+    """Optimized game URL preparation and screenshot capture"""
+    game_code = game.get("code")
+    if not game_code:
+        raise ValueError("Game code is missing")
 
-        url_pp_template = game_config.get("urlTemplates", {}).get("pp", "")
+    # Pre-validate required template
+    url_pp_template = url_templates.get("pp")
+    if not url_pp_template:
+        raise ValueError("PP URL template is missing")
+
+    try:
+        # Use f-string formatting for better performance
         game_url = url_pp_template.format(
-            gameCode=game_code, oc=oc, token=TOKEN, language=LANGUAGE
+            gameCode=game_code, oc=oc, token=token, language=language
         )
 
+        # Create minimal game data object
         game_data = {
             "gameCode": game_code,
             "language": LANGUAGE,
@@ -114,25 +111,32 @@ async def capture_game_for_mode(page, game, game_config, oc):
         return screenshot_path
 
     except Exception as e:
-        write_log(f"❌ Error capturing game {game.get('code', 'unknown')}: {str(e)}")
-        return None
+        write_log(f"❌ Error capturing game {game_code}: {str(e)}")
+        raise  # Re-raise to let caller handle
 
 
-async def run_game(page, templates, screenshot_path):
-    """Run checks for one game with given screenshot and templates."""
+async def run_game(game, token, language, page, loaded_templates, screenshot_path):
+    """Optimized game runner using pre-loaded templates"""
     try:
+        # Use optimized processing with pre-loaded templates
         result = process_screenshot(
+            game,
+            token,
+            language,
             screenshot_path,
-            templates,
+            loaded_templates,
             template_threshold=TEMPLATE_THRESHOLD,
             debug=True,
         )
-        match = result.get("final_matches", [])
-        if not match:
+
+        matches = result.get("final_matches", [])
+        if not matches:
             return "No matches found"
 
-        position = match[0]["center"]
+        # Get first match position
+        position = matches[0]["center"]
         click_result = await click_by_coord(page, position)
+
         if click_result != "success":
             return f"Click failed at {position}: {click_result}"
 
@@ -144,137 +148,172 @@ async def run_game(page, templates, screenshot_path):
 
 
 async def process_single_game(
-    page, game, game_config, oc, modes, stats, console, execution_mode, templates_cache
+    token,
+    language,
+    page,
+    game,
+    url_templates,
+    oc,
+    modes,
+    stats,
+    console,
+    execution_mode,
+    templates_cache,
 ):
-    """Process a single game with comprehensive error handling and cached templates"""
-    game_code = game.get("code", "unknown")
-    game_name = game.get("name", "unknown")
+    """Optimized single game processing with better error handling and performance"""
+    game_code = game.get("code")
+    game_name = game.get("name")
 
     try:
-        write_log("=" * 80)
+        write_log(LOG_DIVIDER)
+        report_path = get_report_path(token, language )
 
-        if game_code == "unknown":
-            write_log("⚠️ Game code is None or missing, skipping...")
-            for mode in modes:
-                stats.add_result(mode, "failed")
-                write_csv_log(
-                    game, map_mode_check_display(mode), "❌", "Game code missing"
-                )
-            return
-
-        if game_name == "unknown":
-            write_log(f"⚠️ Game name is None for code {game_code}, using code as name")
-            game_name = game_code
-
+        # Manual confirmation optimization
         if execution_mode == "manual":
-            try:
-                proceed = await ask_confirmation(
-                    f"Do you want to run game {game_code}?", timeout=5
-                )
-                if not proceed:
-                    write_log(f"⏭️ Skipping game {game_code} as per user choice.")
-                    return
-            except Exception as e:
-                write_log(
-                    f"⚠️ Error in manual confirmation for {game_code}: {e}, proceeding automatically"
-                )
+            if not await _handle_manual_confirmation(game_code):
+                return
 
         console.print(
             f"[bold yellow]🎮 Running Game: {game_name} ({game_code})[/bold yellow]"
         )
         game_start_time = time.time()
 
-        screenshot_path = None
-        try:
-            screenshot_path = await capture_game_for_mode(page, game, game_config, oc)
-        except Exception as e:
-            write_log(
-                f"❌ Critical error capturing screenshot for {game_code}: {str(e)}"
-            )
-            screenshot_path = None
+        screenshot_path = await _capture_screenshot_with_retry(
+            token, language, page, game, url_templates, oc
+        )
 
         if not screenshot_path:
             write_log(f"❌ Failed to capture screenshot for game {game_code}")
-            for mode in modes:
-                stats.add_result(mode, "failed")
-                write_csv_log(
-                    game,
-                    map_mode_check_display(mode),
-                    "❌",
-                    "Screenshot capture failed",
-                )
+            _record_failed_results(report_path, game, modes, stats, "Screenshot capture failed")
             return
 
-        # Process each mode with individual error handling using cached templates
-        for mode in modes:
-            try:
-                # Get templates from cache instead of loading from disk
-                templates = templates_cache.get(mode, [])
-
-                if not templates:
-                    write_log(f"⚠️ No templates found for mode={mode}")
-                    stats.add_result(mode, "failed")
-                    write_csv_log(
-                        game, map_mode_check_display(mode), "⚠️", "No templates found"
-                    )
-                    continue
-
-                result = await run_game(page, templates, screenshot_path)
-
-                message_error = ""
-                if result == "success":
-                    icon = "✅"
-                    status = "success"
-                elif result.startswith("No matches") or result.startswith("Failed"):
-                    icon = "⚠️"
-                    status = "failed"
-                    message_error = result
-                else:
-                    icon = "❌"
-                    status = "failed"
-                    message_error = result
-
-                stats.add_result(mode, status)
-                write_csv_log(game, map_mode_check_display(mode), icon, message_error)
-                write_log(
-                    f"{icon} Game {game_code} (mode={map_mode_check_display(mode)}): {result}"
-                )
-
-            except Exception as e:
-                write_log(
-                    f"❌ Error processing mode {mode} for game {game_code}: {str(e)}"
-                )
-                stats.add_result(mode, "failed")
-                write_csv_log(
-                    game,
-                    map_mode_check_display(mode),
-                    "❌",
-                    f"Mode processing error: {str(e)}",
-                )
-
-        # Show game completion with elapsed time
-        game_elapsed = time.time() - game_start_time
-        minutes, seconds = divmod(int(game_elapsed), 60)
-        console.print(
-            f"[green]Completed Game: {game_name} ({game_code}) (Runtime: {minutes:02d}:{seconds:02d})[/green]"
+        # Process each mode efficiently
+        await _process_modes_for_game(
+            token, language, page, game, modes, templates_cache, screenshot_path, stats
         )
-        console.print("[dim]" + "=" * 60 + "[/dim]")
+
+        # Show completion with optimized time formatting
+        _show_game_completion(console, game_name, game_code, game_start_time)
 
     except Exception as e:
         write_log(f"❌ Critical error processing game {game_code}: {str(e)}")
         console.print(f"[red]❌ Critical error in game {game_code}: {str(e)}[/red]")
-        # Still log failed results for all modes
-        for mode in modes:
+        _record_failed_results(report_path, game, modes, stats, f"Critical game error: {str(e)}")
+
+
+async def _handle_manual_confirmation(game_code: str) -> bool:
+    """Handle manual confirmation with timeout"""
+    try:
+        proceed = await ask_confirmation(
+            f"Do you want to run game {game_code}?", timeout=5
+        )
+        if not proceed:
+            write_log(f"⏭️ Skipping game {game_code} as per user choice.")
+            return False
+        return True
+    except Exception as e:
+        write_log(
+            f"⚠️ Error in manual confirmation for {game_code}: {e}, proceeding automatically"
+        )
+        return True
+
+
+async def _capture_screenshot_with_retry(
+    token, language, page, game, url_templates, oc, max_retries=2
+):
+    """Capture screenshot with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            return await capture_game_for_mode(
+                token, language, page, game, url_templates, oc
+            )
+        except Exception as e:
+            if attempt == max_retries - 1:  # Last attempt
+                write_log(
+                    f"❌ Final screenshot capture failed for {game.get('code')}: {str(e)}"
+                )
+                return None
+            write_log(f"⚠️ Screenshot attempt {attempt + 1} failed, retrying: {str(e)}")
+            await asyncio.sleep(1)  # Brief delay before retry
+
+
+async def _process_modes_for_game(
+    token, language, page, game, modes, templates_cache, screenshot_path, stats
+):
+    
+    
+    report_path = get_report_path(token, language )
+    
+    for mode in modes:
+        try:
+            loaded_templates = templates_cache.get(mode, [])
+
+            if not loaded_templates:
+                write_log(f"⚠️ No templates found for mode={mode}")
+                stats.add_result(mode, "failed")
+                write_csv_log(
+                    report_path, game, map_mode_check_display(mode), "⚠️", "No templates found"
+                )
+                continue
+
+            result = await run_game(
+                game, token, language, page, loaded_templates, screenshot_path
+            )
+
+            icon, status, message_error = _process_game_result(result)
+
+            stats.add_result(mode, status)
+            write_csv_log(report_path, game, map_mode_check_display(mode), icon, message_error)
+            write_log(
+                f"{icon} Game {game.get('code')} (mode={map_mode_check_display(mode)}): {result}"
+            )
+
+        except Exception as e:
+            write_log(
+                f"❌ Error processing mode {mode} for game {game.get('code')}: {str(e)}"
+            )
             stats.add_result(mode, "failed")
             write_csv_log(
+                report_path,
                 game,
                 map_mode_check_display(mode),
                 "❌",
-                f"Critical game error: {str(e)}",
+                f"Mode processing error: {str(e)}",
             )
 
 
-async def run_all_games(env, oc, modes, execution_mode, games, game_config, conn):
+def _process_game_result(result: str) -> tuple:
+    """Process game result and return status indicators"""
+    if result == "success":
+        return "✅", "success", ""
+    elif result.startswith("No matches") or result.startswith("Failed"):
+        return "⚠️", "failed", result
+    else:
+        return "❌", "failed", result
+
+
+def _record_failed_results(report_path, game, modes, stats, error_message):
+    """Record failed results for all modes"""
+    for mode in modes:
+        stats.add_result(mode, "failed")
+        write_csv_log(report_path, game, map_mode_check_display(mode), "❌", error_message)
+
+
+def _show_game_completion(console, game_name, game_code, start_time):
+    """Show game completion with optimized formatting"""
+    elapsed = time.time() - start_time
+    minutes, seconds = divmod(int(elapsed), 60)
+    console.print(
+        f"🏁 [green]Completed Game:[/green] [bold yellow]{game_name}[/bold yellow] "
+        f"([cyan]{game_code}[/cyan]) (Runtime: [magenta]{minutes:02d}:{seconds:02d}[/magenta])"
+    )
+    console.print(PROGRESS_DIVIDER)
+
+
+async def run_all_games_optimized(
+    env, token, language, oc, modes, execution_mode, games, url_templates, conn
+):
+    """Optimized main game runner with better resource management"""
     console = Console()
     stats = GameStatistics()
 
@@ -283,18 +322,26 @@ async def run_all_games(env, oc, modes, execution_mode, games, game_config, conn
     page = None
 
     try:
-        # Load all templates once at the beginning
         templates_cache = load_all_templates(oc, modes)
-        
+        if not any(templates_cache.values()):
+            write_log("❌ No templates loaded for any mode, exiting")
+            return
+
         browser_manager = BrowserManager(headless=False)
         browser = await browser_manager.launch()
         page = await browser.new_page()
+
+        await page.set_viewport_size({"width": 1280, "height": 720})
+
         print("\n")
         print_banner(
             console,
-            f"🎮✨ Starting Game Checks in {env.upper()} environment for OC: {oc}",
+            f"🎮✨ Starting Game Checks in [bold green]{escape(env.upper())}[/bold green] environment "
+            f"for OC: [bold cyan]{escape(oc)}[/bold cyan] "
+            f"and token: [bold magenta]{escape(token)}[/bold magenta]",
             width=10,
         )
+        print("\n")
 
         total_games = len(games)
         console.print(
@@ -302,14 +349,26 @@ async def run_all_games(env, oc, modes, execution_mode, games, game_config, conn
         )
 
         completed_games = 0
+        failed_games = 0
 
         for i, game in enumerate(games, 1):
             try:
                 console.print(
                     f"\n[bold blue]📋 Progress: {i}/{total_games}[/bold blue]"
                 )
+
                 await process_single_game(
-                    page, game, game_config, oc, modes, stats, console, execution_mode, templates_cache
+                    token,
+                    language,
+                    page,
+                    game,
+                    url_templates,
+                    oc,
+                    modes,
+                    stats,
+                    console,
+                    execution_mode,
+                    templates_cache,
                 )
                 completed_games += 1
 
@@ -317,59 +376,99 @@ async def run_all_games(env, oc, modes, execution_mode, games, game_config, conn
                 game_code = game.get("code", "unknown")
                 write_log(f"❌ Unhandled error processing game {game_code}: {str(e)}")
                 console.print(
-                    f"[red]❌ Unhandled error in game {game_code}, continuing with next game...[/red]"
+                    f"[red]❌ Unhandled error in game {game_code}, continuing...[/red]"
                 )
+                failed_games += 1
                 continue
 
+        # Enhanced completion summary
         console.print(
-            f"\n[bold green]📊 Processing Summary: {completed_games}/{total_games} games processed[/bold green]"
+            f"\n[bold green]📊 Processing Summary: {completed_games}/{total_games} games processed"
         )
+        if failed_games > 0:
+            console.print(
+                f"[bold red]⚠️ {failed_games} games had critical errors[/bold red]"
+            )
+        console.print("[/bold green]")
 
     except Exception as e:
-        write_log(f"❌ Critical error in run_all_games: {str(e)}")
+        write_log(f"❌ Critical error in run_all_games_optimized: {str(e)}")
         console.print(f"[red]❌ Critical system error: {str(e)}[/red]")
 
     finally:
-        # Cleanup resources safely
-        try:
-            if browser_manager:
-                await browser_manager.close()
-                write_log("✅ Browser closed successfully")
-        except Exception as e:
-            write_log(f"⚠️ Error closing browser: {str(e)}")
+        await _cleanup_resources(browser_manager, conn)
 
-        try:
-            if conn:
-                conn.close()
-                write_log("✅ DB connection closed")
-        except Exception as e:
-            write_log(f"⚠️ Error closing DB connection: {str(e)}")
-
-    # Print final summary by mode
     try:
         stats.print_final_summary(console)
     except Exception as e:
         write_log(f"⚠️ Error printing final summary: {str(e)}")
 
 
+async def _cleanup_resources(browser_manager, conn):
+    cleanup_tasks = []
+
+    if browser_manager:
+        cleanup_tasks.append(_close_browser(browser_manager))
+
+    if conn:
+        cleanup_tasks.append(_close_db_connection(conn))
+
+    if cleanup_tasks:
+        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+
+
+async def _close_browser(browser_manager):
+    try:
+        await browser_manager.close()
+        write_log("✅ Browser closed successfully")
+    except Exception as e:
+        write_log(f"⚠️ Error closing browser: {str(e)}")
+
+
+async def _close_db_connection(conn):
+    """Close DB connection asynchronously"""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, conn.close)
+        write_log("✅ DB connection closed")
+        write_log("🎮 Game Checks Completed Successfully !!!")
+    except Exception as e:
+        write_log(f"⚠️ Error closing DB connection: {str(e)}")
+
+
+def validate_configuration(
+    env, oc, modes, db_config, game_config, games, url_templates
+):
+    """Validate all configuration before processing"""
+    validations = [
+        (env and oc and modes, "Missing basic configuration"),
+        (db_config, "No DB config found"),
+        (game_config, "No game config found"),
+        (game_config.get("operatorTarget"), "No operatorTarget found in game config"),
+        (url_templates.get("pp"), "No PP URL template found in game config"),
+    ]
+
+    for condition, error_msg in validations:
+        if not condition:
+            write_log(f"⚠️ {error_msg}")
+            return False
+    return True
+
+
 def main():
+    """Optimized main function with better error handling and validation"""
     console = Console()
 
     try:
         # Initialize workspace
         init_workspace()
-        ensure_dirs()
         write_log("✅ Workspace initialized successfully")
-
-        # Get player token from operator API
-        token = get_token_by_operator_target(
-            operator_target="https://operator-demo.dev.revenge-games.com",
-            currency="USD",
-            language="en",
-        )
 
         # Get all providers from metadata
         providers = get_all_providers()
+        if not providers:
+            write_log("⚠️ No providers available!")
+            return
 
         # Get user configurations
         env, oc, execution_mode, modes = get_user_configurations(providers)
@@ -380,27 +479,60 @@ def main():
         Config.load(env)
         write_log(f"✅ Loaded config for ENV={env}")
 
+        # Get configurations with validation
         db_config = Config.get("db")
-        if not db_config:
-            write_log("⚠️ No DB config found!")
-            return
-
         game_config = Config.get("game")
-        if not game_config:
-            write_log("⚠️ No game config found!")
+
+        # Get database connection
+        conn = get_db_connection(db_config)
+        if not conn:
+            write_log("⚠️ Failed to connect to DB!")
             return
 
-        conn = get_db_connection(db_config)
+        # Get token
+        operator_target = game_config.get("operatorTarget")
+        token = get_token_by_operator_target(
+            operator_target=operator_target,
+            currency="USD",
+            language="en",
+        )
 
+        if not token:
+            write_log("⚠️ Failed to obtain player token!")
+            return
+
+        language = LANGUAGE
+        if not language:
+            write_log("⚠️ Language not set, defaulting to 'en'")
+            return
+
+        # Get games
         code_prefix = get_code_prefix(providers, oc)
         games = get_all_game_by_code(code_prefix, db_config)
 
-        if not games:
-            write_log("⚠️ No games found to process!")
+        url_templates = game_config.get("urlTemplates", {})
+
+        # Final validation
+        if not validate_configuration(
+            env, oc, modes, db_config, game_config, games, url_templates
+        ):
             return
 
+        #
+
+        # Run optimized game processing
         asyncio.run(
-            run_all_games(env, oc, modes, execution_mode, games, game_config, conn)
+            run_all_games_optimized(
+                env,
+                token,
+                language,
+                oc,
+                modes,
+                execution_mode,
+                games,
+                url_templates,
+                conn,
+            )
         )
 
         console.print(

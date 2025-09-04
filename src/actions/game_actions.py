@@ -13,7 +13,7 @@ async def capture_game_screenshot(
     """
     try:
         write_log(f"🌐 Loading game page: {game['gameUrl']}")
-        await page.goto(game["gameUrl"], wait_until="networkidle", timeout=50_000)
+        await page.goto(game["gameUrl"], wait_until="networkidle", timeout=100_000)
         await page.wait_for_load_state("networkidle", timeout=2_000)
 
         save_dir.mkdir(parents=True, exist_ok=True)

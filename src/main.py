@@ -120,7 +120,28 @@ async def screenshot_game(token, language, page, game, url_templates, oc):
         raise
 
 
+async def _capture_stage_screenshot(token, game_code, language, mode_display, stage, page):
+    try:
+        # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+        # file_name = f"capture_{mode_display}_{stage}_{timestamp}.jpg"
+        file_name = f"capture_{stage}.jpg"
+        output_path = get_output_path(token, game_code, language) / mode_display / file_name
+        
+        await asyncio.sleep(0.5)
+        
+        await capture_screenshot(page, output_path, f"{mode_display}_{stage}")
+        write_log(f"📸 Screenshot captured: {stage} for mode {mode_display}")
+        return True
+        
+    except Exception as e:
+        write_log(f"⚠️ Screenshot capture failed at stage '{stage}' for mode {mode_display}: {str(e)}")
+        return False
+
+
 async def execute_click(token, language, game_code, mode, result_dict, page):
+    mode_display = map_mode_check_display(mode)
+    screenshot_captured = False
+    
     try:
         is_add_or_sub = is_mode_add_or_sub(mode)
         result = result_dict.get(mode)
@@ -133,6 +154,10 @@ async def execute_click(token, language, game_code, mode, result_dict, page):
 
         position = matches[0]["center"]
 
+        screenshot_captured = await _capture_stage_screenshot(
+            token, game_code, language, mode_display, "before_click", page
+        )
+
         async def do_click(pos, multiple=False):
             click_fn = click_multiple_times if multiple else click_by_coord
             click_result = await click_fn(page, pos)
@@ -142,6 +167,10 @@ async def execute_click(token, language, game_code, mode, result_dict, page):
         if is_add_or_sub:
             await do_click(position, multiple=True)
 
+            await _capture_stage_screenshot(
+                token, game_code, language, mode_display, mode_display, page
+            )
+
             result_spin = result_dict.get("btn_spin")
             if not result_spin or not result_spin.get("final_matches"):
                 return f"Spin button not found after clicking {position}"
@@ -149,8 +178,15 @@ async def execute_click(token, language, game_code, mode, result_dict, page):
             spin_position = result_spin["final_matches"][0]["center"]
             await do_click(spin_position)
 
+            await _capture_stage_screenshot(
+                token, game_code, language, mode_display, "after_spin", page
+            )
+
         else:
             await do_click(position)
+            await _capture_stage_screenshot(
+                token, game_code, language, mode_display, "after_click", page
+            )
 
         return "success"
 
@@ -159,12 +195,14 @@ async def execute_click(token, language, game_code, mode, result_dict, page):
         return f"Unexpected error: {e}"
 
     finally:
-        mode_display = map_mode_check_display(mode)
-        file_name = (
-            f"capture_{mode_display}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        )
-        output_path = get_output_path(token, game_code, language) / file_name
-        await capture_screenshot(page, output_path, mode_display)
+        if not screenshot_captured:
+            try:
+                write_log(f"🔄 Attempting fallback screenshot for mode {mode_display}")
+                await _capture_stage_screenshot(
+                    token, game_code, language, mode_display, "fallback", page
+                )
+            except Exception as e:
+                write_log(f"❌ Fallback screenshot also failed for mode {mode_display}: {str(e)}")
 
 
 async def process_single_game(
@@ -207,7 +245,7 @@ async def process_single_game(
             )
             return
 
-        await _process_capture_screensho(
+        await _process_capture_screenshot(
             token, language, page, game, modes, templates_cache, screenshot_path, stats
         )
 
@@ -257,7 +295,7 @@ async def _capture_screenshot_with_retry(
             await asyncio.sleep(1)  # Brief delay before retry
 
 
-async def _process_capture_screensho(
+async def _process_capture_screenshot(
     token, language, page, game, modes, templates_cache, screenshot_path, stats
 ):
     report_path = get_report_path(token, language)
@@ -430,7 +468,6 @@ async def run_all_games(
                 failed_games += 1
                 continue
 
-        # Enhanced completion summary
         console.print(
             f"\n[bold green]📊 Processing Summary: {completed_games}/{total_games} games processed"
         )
@@ -475,7 +512,6 @@ async def _close_browser(browser_manager):
 
 
 async def _close_db_connection(conn):
-    """Close DB connection asynchronously"""
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, conn.close)

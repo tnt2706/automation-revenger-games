@@ -4,14 +4,13 @@ from typing import Optional
 
 BASE_DIR = Path(__file__).parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "templates"
-SCREEN_DIR = BASE_DIR / "screenshots"
 CAPTURE_DIR = BASE_DIR / "captures"
 OUTPUT_DIR = BASE_DIR / "_output-reports"
 LOG_DIR = BASE_DIR / "logs"
 
 
 def init_workspace():
-    dirs = [SCREEN_DIR, CAPTURE_DIR, LOG_DIR]
+    dirs = [CAPTURE_DIR, LOG_DIR]
 
     for folder in dirs:
         if folder.exists():

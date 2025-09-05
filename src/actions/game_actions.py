@@ -57,10 +57,10 @@ async def click_by_coord(
             continue
 
         try:
-            # await asyncio.wait_for(
-            #     page.wait_for_load_state("networkidle", timeout=idle_timeout),
-            #     timeout=response_timeout / 1000,
-            # )
+            await asyncio.wait_for(
+                page.wait_for_load_state("networkidle", timeout=idle_timeout),
+                timeout=response_timeout / 1000,
+            )
             await asyncio.sleep(settle_delay)
             return "success"
         except asyncio.TimeoutError:
@@ -75,7 +75,7 @@ async def click_by_coord(
 async def click_multiple_times(
     page: Page,
     position: tuple[int, int],
-    times: int = 80,
+    times: int = 40,
     delay: float = 0.2,
 ) -> str:
     x, y = position

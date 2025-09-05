@@ -1,18 +1,48 @@
 from pathlib import Path
 from datetime import datetime, timezone
 from rich.console import Console
+import shutil
+from utils.paths import TEMP_DIR, OUTPUT_DIR
+
+_LOGGER_STATE = {
+    "token": None,
+    "language": None,
+    "folder": Path(TEMP_DIR),
+    "file": Path(TEMP_DIR) / "log_activity.log",
+}
+
+_LOGGER_STATE["folder"].mkdir(parents=True, exist_ok=True)
 
 
-LOG_FILE = Path("logs/result.log")
-LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
-
-
-def now_utc_iso():
+def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def set_log_path(token: str, language: str):
+    new_folder = Path(OUTPUT_DIR) / f"{token}_{language}"
+    new_folder.mkdir(parents=True, exist_ok=True)
+
+    old_folder = _LOGGER_STATE["folder"]
+    if old_folder.exists():
+        for item in old_folder.iterdir():
+            dest = new_folder / item.name
+            if item.is_file():
+                shutil.copy2(item, dest)
+            elif item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+        shutil.rmtree(old_folder)
+
+    _LOGGER_STATE["token"] = token
+    _LOGGER_STATE["language"] = language
+    _LOGGER_STATE["folder"] = new_folder
+    _LOGGER_STATE["file"] = new_folder / "log_activity.log"
+
+
 def write_log(message: str):
-    with LOG_FILE.open("a", encoding="utf-8") as f:
+    folder = _LOGGER_STATE["folder"]
+    folder.mkdir(parents=True, exist_ok=True)
+    log_file = _LOGGER_STATE["file"]
+    with log_file.open("a", encoding="utf-8") as f:
         f.write(f"[{now_utc_iso()}] {message}\n")
 
 

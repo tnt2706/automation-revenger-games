@@ -1,15 +1,19 @@
 import asyncio
-from datetime import datetime
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 from core.process_screenshot import (
     load_all_templates,
     process_screenshot_batch,
 )
-from utils.paths import CAPTURE_DIR, init_workspace, get_report_path, get_output_path, clear_outputs
+from utils.paths import (
+    CAPTURE_DIR,
+    init_workspace,
+    get_report_path,
+    get_output_path,
+    clear_outputs,
+)
 from config import Config
-from utils.logger import write_log, print_banner
-from utils.db_utils import get_db_connection
+from utils.logger import write_log, print_banner, set_log_path
 from actions.game_actions import (
     capture_game_screenshot,
     click_by_coord,
@@ -24,7 +28,9 @@ from cli.prompts import (
     ask_execution_mode,
     ask_confirmation,
     ask_check_modes,
-    ask_delete_output
+    ask_delete_output,
+    ask_currency,
+    ask_language,
 )
 from utils.statistics import GameStatistics
 from utils.mapping_utils import (
@@ -32,64 +38,79 @@ from utils.mapping_utils import (
     map_mode_check_display,
     is_mode_add_or_sub,
 )
-from utils.metadata_utils import get_all_providers, get_code_prefix
-from utils.db_utils import get_all_game_by_code
-from utils.http_utils import get_token_by_operator_target
+from utils.metadata_utils import (
+    get_all_providers,
+    get_all_currencies,
+    get_all_languages,
+)
+
+from utils.response_tracker import set_current_mode, set_game_info
+
+from utils.http_utils import get_token_by_operator_target, fetch_games_data
 from rich.markup import escape
 from rich.console import Console
 
-
-# Configuration constants
 TEMPLATE_THRESHOLD = 0.5
-LANGUAGE = "en"
-
-# Performance optimization: Pre-compile frequently used strings
 LOG_DIVIDER = "=" * 80
 PROGRESS_DIVIDER = "[dim]" + "=" * 60 + "[/dim]"
 
 
-def get_user_configurations(providers: Dict[str, Any]):
-    """Get all user configurations through CLI prompts with optimized logging"""
+def get_user_configurations(
+    providers: Dict[str, Any], languages: Dict[str, Any], currencies: List[str]
+):
 
-    # Early validation to avoid unnecessary processing
-    if not providers:
-        write_log("⚠️ No providers available, exiting.")
-        return None, None, None, None, None
+    if not providers or not languages or not currencies:
+        write_log("⚠️ No input available, exiting.")
+        return None, None, None, None, None, None, None
 
-    should_delete_output = ask_delete_output()
+    output_deletion = ask_delete_output()
 
     # Ask user for environment
     env = ask_environment()
     if not env:
         write_log("⚠️ No environment selected, exiting.")
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
     write_log(f"🌍 Selected environment: {env}")
 
     # Ask user for games
     oc = ask_games(providers)
     if not oc:
         write_log("⚠️ No games selected, exiting.")
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
     write_log(f"🎮 Selected games: {oc}")
+
+    # Ask user for language
+    language = ask_language(languages)
+    if not language:
+        write_log("⚠️ No language selected, exiting.")
+        return None, None, None, None, None, None, None
+    write_log(f"🎮 Selected language: {language}")
+
+    # Ask user for currency
+    currency = ask_currency(currencies)
+    if not currency:
+        write_log("⚠️ No currencies selected, exiting.")
+        return None, None, None, None, None, None, None
+    write_log(f"🎮 Selected currency: {currency}")
 
     # Ask user for execution mode
     execution_mode = ask_execution_mode()
     if not execution_mode:
         write_log("⚠️ No execution mode selected, exiting.")
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
     write_log(f"⚙️ Selected execution mode: {execution_mode}")
 
     # Ask user for check modes
     check_modes = ask_check_modes()
     if not check_modes:
         write_log("⚠️ No check modes selected, exiting.")
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
 
     modes = reverse_mode_check(check_modes)
     write_log(f"🔍 Selected check modes: {', '.join(modes)}")
     write_log(LOG_DIVIDER)
 
-    return should_delete_output, env, oc, execution_mode, modes
+    return output_deletion, env, oc, execution_mode, modes, language, currency
 
 
 async def screenshot_game(token, language, page, game, url_templates, oc):
@@ -108,7 +129,7 @@ async def screenshot_game(token, language, page, game, url_templates, oc):
 
         game_data = {
             "gameCode": game_code,
-            "language": LANGUAGE,
+            "language": language,
             "gameUrl": game_url,
         }
 
@@ -120,28 +141,31 @@ async def screenshot_game(token, language, page, game, url_templates, oc):
         raise
 
 
-async def _capture_stage_screenshot(token, game_code, language, mode_display, stage, page):
+async def _capture_stage_screenshot(
+    token, game_code, language, mode_display, stage, page
+):
     try:
-        # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
-        # file_name = f"capture_{mode_display}_{stage}_{timestamp}.jpg"
         file_name = f"capture_{stage}.jpg"
-        output_path = get_output_path(token, game_code, language) / mode_display / file_name
-        
+        output_path = (
+            get_output_path(token, game_code, language) / mode_display / file_name
+        )
+
         await asyncio.sleep(0.5)
-        
+
         await capture_screenshot(page, output_path, f"{mode_display}_{stage}")
-        write_log(f"📸 Screenshot captured: {stage} for mode {mode_display}")
         return True
-        
+
     except Exception as e:
-        write_log(f"⚠️ Screenshot capture failed at stage '{stage}' for mode {mode_display}: {str(e)}")
+        write_log(
+            f"⚠️ Screenshot capture failed at stage '{stage}' for mode {mode_display}: {str(e)}"
+        )
         return False
 
 
 async def execute_click(token, language, game_code, mode, result_dict, page):
     mode_display = map_mode_check_display(mode)
     screenshot_captured = False
-    
+
     try:
         is_add_or_sub = is_mode_add_or_sub(mode)
         result = result_dict.get(mode)
@@ -202,7 +226,9 @@ async def execute_click(token, language, game_code, mode, result_dict, page):
                     token, game_code, language, mode_display, "fallback", page
                 )
             except Exception as e:
-                write_log(f"❌ Fallback screenshot also failed for mode {mode_display}: {str(e)}")
+                write_log(
+                    f"❌ Fallback screenshot also failed for mode {mode_display}: {str(e)}"
+                )
 
 
 async def process_single_game(
@@ -232,7 +258,10 @@ async def process_single_game(
         console.print(
             f"[bold yellow]🎮 Running Game: {game_name} ({game_code})[/bold yellow]"
         )
+
         game_start_time = time.time()
+
+        write_log(f"Running Game: {game_name} - code: {game_code}")
 
         screenshot_path = await _capture_screenshot_with_retry(
             token, language, page, game, url_templates, oc
@@ -244,6 +273,14 @@ async def process_single_game(
                 report_path, game, modes, stats, "Screenshot capture failed"
             )
             return
+
+        set_game_info(
+            game_code, 
+            game_name,
+            language,
+            token,
+            page
+        )
 
         await _process_capture_screenshot(
             token, language, page, game, modes, templates_cache, screenshot_path, stats
@@ -260,10 +297,9 @@ async def process_single_game(
 
 
 async def _handle_manual_confirmation(game_code: str) -> bool:
-    """Handle manual confirmation with timeout"""
     try:
         proceed = await ask_confirmation(
-            f"Do you want to run game {game_code}?", timeout=5
+            f"\nDo you want to run game {game_code}?", timeout=5
         )
         if not proceed:
             write_log(f"⏭️ Skipping game {game_code} as per user choice.")
@@ -316,7 +352,6 @@ async def _process_capture_screenshot(
 
     write_log(f"✅ Screenshot processing completed for game {game_code}")
 
-    # Process each mode result
     for mode in modes:
         await _handle_single_mode_result(
             token, language, game, mode, result_dict, page, stats, report_path
@@ -330,6 +365,8 @@ async def _handle_single_mode_result(
     try:
         game_code = game.get("code")
         mode_display = map_mode_check_display(mode)
+
+        set_current_mode(mode_display)
 
         result = result_dict.get(mode)
         if result is None:
@@ -379,16 +416,13 @@ def _process_game_result(result: str) -> tuple:
 
 
 def _record_failed_results(report_path, game, modes, stats, error_message):
-    """Record failed results for all modes"""
     for mode in modes:
         stats.add_result(mode, "failed")
         write_csv_log(
             report_path, game, map_mode_check_display(mode), "❌", error_message
         )
 
-
 def _show_game_completion(console, game_name, game_code, start_time):
-    """Show game completion with optimized formatting"""
     elapsed = time.time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
     console.print(
@@ -399,7 +433,7 @@ def _show_game_completion(console, game_name, game_code, start_time):
 
 
 async def run_all_games(
-    env, token, language, oc, modes, execution_mode, games, url_templates, conn
+    env, token, language, oc, modes, execution_mode, games, url_templates
 ):
     console = Console()
     stats = GameStatistics()
@@ -439,6 +473,8 @@ async def run_all_games(
         failed_games = 0
 
         for i, game in enumerate(games, 1):
+            if i < 5:
+                continue
             try:
                 console.print(
                     f"\n[bold blue]📋 Progress: {i}/{total_games}[/bold blue]"
@@ -479,10 +515,10 @@ async def run_all_games(
 
     except Exception as e:
         write_log(f"❌ Critical error in run_all_games: {str(e)}")
-        console.print(f"[red]❌ Critical system error: {str(e)}[/red]")
+        # console.print(f"[red]❌ Critical system error: {str(e)}[/red]")
 
     finally:
-        await _cleanup_resources(browser_manager, conn)
+        await _cleanup_resources(browser_manager)
 
     try:
         stats.print_final_summary(console)
@@ -490,15 +526,12 @@ async def run_all_games(
         write_log(f"⚠️ Error printing final summary: {str(e)}")
 
 
-async def _cleanup_resources(browser_manager, conn):
+async def _cleanup_resources(browser_manager):
     cleanup_tasks = []
 
     if browser_manager:
         cleanup_tasks.append(_close_browser(browser_manager))
-
-    if conn:
-        cleanup_tasks.append(_close_db_connection(conn))
-
+    
     if cleanup_tasks:
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
@@ -510,23 +543,11 @@ async def _close_browser(browser_manager):
     except Exception as e:
         write_log(f"⚠️ Error closing browser: {str(e)}")
 
-
-async def _close_db_connection(conn):
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, conn.close)
-        write_log("✅ DB connection closed")
-        write_log("🎮 Game Checks Completed Successfully !!!")
-    except Exception as e:
-        write_log(f"⚠️ Error closing DB connection: {str(e)}")
-
-
 def validate_configuration(
-    env, oc, modes, db_config, game_config, games, url_templates
+    env, oc, modes, game_config, url_templates
 ):
     validations = [
         (env and oc and modes, "Missing basic configuration"),
-        (db_config, "No DB config found"),
         (game_config, "No game config found"),
         (game_config.get("operatorTarget"), "No operatorTarget found in game config"),
         (url_templates.get("pp"), "No PP URL template found in game config"),
@@ -539,6 +560,25 @@ def validate_configuration(
     return True
 
 
+def _get_meta_data():
+    providers = get_all_providers()
+    if not providers:
+        write_log("⚠️ No providers available!")
+        return None, None, None
+
+    languages = get_all_languages()
+    if not languages:
+        write_log("⚠️ No languages available!")
+        return None, None, None
+
+    currencies = get_all_currencies()
+    if not currencies:
+        write_log("⚠️ No currencies available!")
+        return None, None, None
+
+    return providers, languages, currencies
+
+
 def main():
     console = Console()
 
@@ -547,63 +587,50 @@ def main():
         init_workspace()
         write_log("✅ Workspace initialized successfully")
 
-        # Get all providers from metadata
-        providers = get_all_providers()
-        if not providers:
-            write_log("⚠️ No providers available!")
+        # Get from metadata
+        providers, languages, currencies = _get_meta_data()
+        if not all([providers, languages, currencies]):
             return
 
         # Get user configurations
-        should_delete_output, env, oc, execution_mode, modes = get_user_configurations(
-            providers
+        output_deletion, env, oc, execution_mode, modes, language, currency = (
+            get_user_configurations(providers, languages, currencies)
         )
 
-        if not all([env, oc, modes]):
+        if not all([env, oc, modes, language, currency]):
             return
-        
-        if should_delete_output is True:
+
+        # Clear all data in dir _output_report
+        if output_deletion is True:
             clear_outputs()
 
-        # Load config with selected env
+        # Load config with selected e nv
         Config.load(env)
         write_log(f"✅ Loaded config for ENV={env}")
 
-        # Get configurations with validation
-        db_config = Config.get("db")
         game_config = Config.get("game")
-
-        # Get database connection
-        conn = get_db_connection(db_config)
-        if not conn:
-            write_log("⚠️ Failed to connect to DB!")
-            return
 
         # Get token
         operator_target = game_config.get("operatorTarget")
         token = get_token_by_operator_target(
             operator_target=operator_target,
-            currency="USD",
-            language="en",
+            currency=currency,
+            language=language,
         )
-
+        
         if not token:
             write_log("⚠️ Failed to obtain player token!")
             return
 
-        language = LANGUAGE
-        if not language:
-            write_log("⚠️ Language not set, defaulting to 'en'")
-            return
-
-        # Get games
-        code_prefix = get_code_prefix(providers, oc)
-        games = get_all_game_by_code(code_prefix, db_config)
+        set_log_path(token, language)
+        
+        sevice_game_client_target = game_config.get('serviceGameClientTarget')
+        games = fetch_games_data(sevice_game_client_target, oc)
 
         url_templates = game_config.get("urlTemplates", {})
 
-        # Final validation
         if not validate_configuration(
-            env, oc, modes, db_config, game_config, games, url_templates
+            env, oc, modes, game_config, url_templates
         ):
             return
 
@@ -618,7 +645,6 @@ def main():
                 execution_mode,
                 games,
                 url_templates,
-                conn,
             )
         )
 
@@ -632,7 +658,6 @@ def main():
 
     except Exception as e:
         write_log(f"❌ Critical error in main: {str(e)}")
-        console.print(f"[red]❌ Critical system error: {str(e)}[/red]")
 
 
 if __name__ == "__main__":

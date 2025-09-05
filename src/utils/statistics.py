@@ -17,7 +17,6 @@ class GameStatistics:
             self.results_by_mode[mode]["failed"] += 1
 
     def print_final_summary(self, console: Console):
-        """Print final summary by mode"""
         console.print(f"\n[bold blue]📊 Final Results Summary:[/bold blue]")
 
         for mode, results in self.results_by_mode.items():

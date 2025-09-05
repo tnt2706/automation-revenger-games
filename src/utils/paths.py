@@ -6,11 +6,11 @@ BASE_DIR = Path(__file__).parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 CAPTURE_DIR = BASE_DIR / "captures"
 OUTPUT_DIR = BASE_DIR / "_output-reports"
-LOG_DIR = BASE_DIR / "logs"
+TEMP_DIR = BASE_DIR / "temps"
 
 
 def init_workspace():
-    dirs = [CAPTURE_DIR, LOG_DIR]
+    dirs = [CAPTURE_DIR, TEMP_DIR]
 
     for folder in dirs:
         if folder.exists():
@@ -19,11 +19,11 @@ def init_workspace():
 
 
 def get_output_path(token: str, game_code: str, language: Optional[str] = "en") -> Path:
-    return OUTPUT_DIR / token / (language if language else "en") / game_code
+    return OUTPUT_DIR / f'{token}_{(language if language else "en")}' / game_code
 
 
 def get_report_path(token: str, language: Optional[str] = "en") -> Path:
-    return OUTPUT_DIR / token / (language if language else "en") / "report.log"
+    return OUTPUT_DIR / f'{token}_{(language if language else "en")}' / "report.csv"
 
 
 def clear_captures():
@@ -33,4 +33,3 @@ def clear_captures():
 def clear_outputs():
     shutil.rmtree(OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-

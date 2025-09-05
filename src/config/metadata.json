@@ -1,0 +1,36 @@
+{
+  "currencies": [
+    "USD",
+    "BRL",
+    "EUR",
+    "USDT"
+  ],
+  "languages": [
+    {
+      "code": "en",
+      "name": "English"
+    },
+    {
+      "code": "fr",
+      "name": "Français"
+    },
+    {
+      "code": "ja",
+      "name": "日本語"
+    }
+  ],
+  "providers": [
+    {
+      "oc": "ppdemo",
+      "gameName": "Clone"
+    },
+    {
+      "oc": "rddemo",
+      "gameName": "Reclix"
+    },
+    {
+      "oc": "rvddemo",
+      "gameName": "Revenge"
+    }
+  ]
+}

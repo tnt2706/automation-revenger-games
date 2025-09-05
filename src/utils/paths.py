@@ -1,31 +1,35 @@
 from pathlib import Path
+import shutil
+from typing import Optional
 
-# ---------------------------
-# Base directories
-# ---------------------------
 BASE_DIR = Path(__file__).parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "templates"
-SCREEN_DIR = BASE_DIR / "screenshots"
-OUTPUT_DIR = BASE_DIR / "output"
-LOG_FILE = BASE_DIR / "result.log"
+CAPTURE_DIR = BASE_DIR / "captures"
+OUTPUT_DIR = BASE_DIR / "_output-reports"
+TEMP_DIR = BASE_DIR / "temps"
 
-# ---------------------------
-# Helper functions
-# ---------------------------
-def ensure_dirs():
-    """Create necessary directories if they don't exist."""
-    for folder in [TEMPLATE_DIR, SCREEN_DIR, OUTPUT_DIR]:
+
+def init_workspace():
+    dirs = [CAPTURE_DIR, TEMP_DIR]
+
+    for folder in dirs:
+        if folder.exists():
+            shutil.rmtree(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
-def get_screenshot_path(filename: str) -> Path:
-    """Return full path for a screenshot file inside SCREEN_DIR."""
-    return SCREEN_DIR / filename
 
-def get_output_path(filename: str) -> Path:
-    """Return full path for an output file inside OUTPUT_DIR."""
-    return OUTPUT_DIR / filename
+def get_output_path(token: str, game_code: str, language: Optional[str] = "en") -> Path:
+    return OUTPUT_DIR / f'{token}_{(language if language else "en")}' / game_code
 
-def log_message(message: str):
-    """Append a message to the log file."""
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{message}\n")
+
+def get_report_path(token: str, language: Optional[str] = "en") -> Path:
+    return OUTPUT_DIR / f'{token}_{(language if language else "en")}' / "report.csv"
+
+
+def clear_captures():
+    shutil.rmtree(CAPTURE_DIR)
+
+
+def clear_outputs():
+    shutil.rmtree(OUTPUT_DIR)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

@@ -274,13 +274,7 @@ async def process_single_game(
             )
             return
 
-        set_game_info(
-            game_code, 
-            game_name,
-            language,
-            token,
-            page
-        )
+        set_game_info(game_code, game_name, language, token, page)
 
         await _process_capture_screenshot(
             token, language, page, game, modes, templates_cache, screenshot_path, stats
@@ -422,6 +416,7 @@ def _record_failed_results(report_path, game, modes, stats, error_message):
             report_path, game, map_mode_check_display(mode), "❌", error_message
         )
 
+
 def _show_game_completion(console, game_name, game_code, start_time):
     elapsed = time.time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
@@ -531,7 +526,7 @@ async def _cleanup_resources(browser_manager):
 
     if browser_manager:
         cleanup_tasks.append(_close_browser(browser_manager))
-    
+
     if cleanup_tasks:
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
@@ -543,9 +538,8 @@ async def _close_browser(browser_manager):
     except Exception as e:
         write_log(f"⚠️ Error closing browser: {str(e)}")
 
-def validate_configuration(
-    env, oc, modes, game_config, url_templates
-):
+
+def validate_configuration(env, oc, modes, game_config, url_templates):
     validations = [
         (env and oc and modes, "Missing basic configuration"),
         (game_config, "No game config found"),
@@ -617,21 +611,19 @@ def main():
             currency=currency,
             language=language,
         )
-        
+
         if not token:
             write_log("⚠️ Failed to obtain player token!")
             return
 
         set_log_path(token, language)
-        
-        sevice_game_client_target = game_config.get('serviceGameClientTarget')
+
+        sevice_game_client_target = game_config.get("serviceGameClientTarget")
         games = fetch_games_data(sevice_game_client_target, oc)
 
         url_templates = game_config.get("urlTemplates", {})
 
-        if not validate_configuration(
-            env, oc, modes, game_config, url_templates
-        ):
+        if not validate_configuration(env, oc, modes, game_config, url_templates):
             return
 
         # Run optimized game processing
